@@ -1,0 +1,54 @@
+name: Continuous Testing CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  continuous-testing:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run static code analysis with ESLint
+        run: npm run lint
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Start PostgreSQL test database with Docker Compose
+        run: docker compose -f docker-compose.test.yml up -d
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          echo "Waiting for PostgreSQL..."
+          for i in {1..15}; do
+            nc -z localhost 5433 && echo "PostgreSQL is ready" && exit 0
+            echo "PostgreSQL is unavailable - sleeping"
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready in time"
+          docker logs postgres-test
+          exit 1
+
+      - name: Run integration tests
+        run: npm run test:integration
+
+      - name: Run all tests with coverage
+        run: npm test
+
+      - name: Stop PostgreSQL test database
+        if: always()
+        run: docker compose -f docker-compose.test.yml down
